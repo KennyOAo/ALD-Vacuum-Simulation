@@ -1,0 +1,132 @@
+clear; clc; close all;
+
+%% Chamber Parameters
+R = 8.314;
+T = 300;
+V = 0.88e-3;          % m^3
+Spump = 4.2e-3;       % m^3/s
+L = 1;                % pipe length (m)
+D = 0.0127;           % 1/2 inch (m)
+
+k = 1.38e-23;
+d_molecule = 3.7e-10; % N2 diameter
+
+%% Conductance Calculation
+C = 12.1 * D^3 / L;   % molecular approx
+Seff = 1 / (1/Spump + 1/C);
+
+%% Flow rate
+sccm_to_mol = @(Q) Q / 60000 / 22.414;
+Q_A = sccm_to_mol(300);
+Q_B = sccm_to_mol(300);
+
+%% Cycle timing
+tA = 0.25;
+tPurge = 2;
+tB = 0.25;
+tCycle = tA + tPurge + tB + tPurge;
+nCycles = 8;
+
+tspan = [0 nCycles*tCycle];
+P0 = 10;
+
+%% Pressure equation ODE
+[t,P] = ode45(@(t,P) pressureODE(t,P,R,T,V,Seff,Q_A,Q_B,tA,tPurge,tB,tCycle), tspan, P0);
+
+figure;
+plot(t,P,'LineWidth',2);
+title('ALD Pressure Cycles');
+xlabel('Time (s)'); ylabel('Pressure (Pa)');
+grid on;
+
+%% Pump Down Validation
+P_theory = P0 * exp(-t * Seff / V);
+
+figure;
+plot(t,P,'b',t,P_theory,'r--','LineWidth',2);
+legend('Simulated','Ideal Pump-down');
+title('Pump-down Comparison');
+grid on;
+
+%% Flow Regime
+lambda = @(P) (k*T)./(sqrt(2)*pi*d_molecule^2*P);
+Kn = lambda(P)/D;
+
+figure;
+plot(P,Kn);
+set(gca,'XScale','log','YScale','log');
+xlabel('Pressure (Pa)');
+ylabel('Knudsen Number');
+title('Flow Regime Map');
+grid on;
+
+%% Conductance Sweep
+D_range = linspace(0.005,0.05,50);
+for i=1:length(D_range)
+    C_i = 12.1 * D_range(i)^3 / L;
+    Seff_i(i) = 1/(1/Spump + 1/C_i);
+end
+
+figure;
+plot(D_range,Seff_i,'LineWidth',2);
+xlabel('Diameter (m)');
+ylabel('Effective Pump Speed');
+title('Conductance Limitation');
+grid on;
+
+%% Purge Efficiency
+purge_times = linspace(0.5,5,15);
+
+for i=1:length(purge_times)
+    tPurge_test = purge_times(i);
+    tCycle_test = tA + tPurge_test + tB + tPurge_test;
+
+    [t_test,P_test] = ode45(@(t,P) pressureODE(t,P,R,T,V,Seff,Q_A,Q_B,tA,tPurge_test,tB,tCycle_test), [0 tCycle_test], P0);
+
+    P_start = max(P_test);
+    P_end = min(P_test);
+    eff(i) = 1 - P_end/P_start;
+end
+
+figure;
+plot(purge_times,eff,'LineWidth',2);
+xlabel('Purge Time (s)');
+ylabel('Efficiency');
+title('Purge Efficiency');
+grid on;
+
+%% Parameter Sensitivity
+scale = linspace(0.5,2,20);
+
+for i=1:length(scale)
+    Seff_test = Seff * scale(i);
+    [~,P_test] = ode45(@(t,P) pressureODE(t,P,R,T,V,Seff_test,Q_A,Q_B,tA,tPurge,tB,tCycle), [0 tCycle], P0);
+    result(i) = min(P_test);
+end
+
+figure;
+plot(scale,result,'LineWidth',2);
+xlabel('Pump Speed Scaling');
+ylabel('Final Pressure');
+title('Sensitivity Analysis');
+grid on;
+
+%% Monte Carlo Simulation
+N = 800;
+x = rand(N,1);
+y = rand(N,1);
+
+figure;
+for step = 1:100
+    x = x + 0.02*randn(size(x));
+    y = y + 0.02*randn(size(y));
+
+    survive = rand(size(x)) > 0.05; % pump removal
+    x = x(survive);
+    y = y(survive);
+
+    scatter(x,y,10,'filled');
+    xlim([0 1]); ylim([0 1]);
+    title('Monte Carlo Purge Visualization');
+    drawnow;
+end
