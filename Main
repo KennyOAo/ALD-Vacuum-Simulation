@@ -31,6 +31,23 @@ tspan = [0 nCycles*tCycle];
 P0 = 10;
 
 %% Pressure equation ODE
+function dPdt = pressureODE(t, P, R, T, V, Seff, Q_A, Q_B, tA, tPurge, tB, tCycle)
+
+    t_mod = mod(t, tCycle);
+
+    if t_mod < tA
+        Q_in = Q_A;
+    elseif t_mod < tA + tPurge
+        Q_in = 0;
+    elseif t_mod < tA + tPurge + tB
+        Q_in = Q_B;
+    else
+        Q_in = 0;
+    end
+
+    dPdt = (R*T/V)*(Q_in - Seff*P);
+
+end
 [t,P] = ode45(@(t,P) pressureODE(t,P,R,T,V,Seff,Q_A,Q_B,tA,tPurge,tB,tCycle), tspan, P0);
 
 figure;
