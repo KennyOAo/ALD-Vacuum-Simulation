@@ -1,0 +1,110 @@
+clear; clc; close all;
+
+%% Parameters
+N = 3000;              % number of particles
+L = 1;                 % chamber width
+H = 1;                 % chamber height
+bins = 20;             % wafer bins
+
+%% Case1: Simple Side Flow
+x = zeros(N,1);
+y = rand(N,1);
+
+vx = abs(randn(N,1));      % push right
+vy = 0.3*randn(N,1);
+
+hit_x_side = [];
+
+for step = 1:200
+    x = x + 0.01*vx;
+    y = y + 0.01*vy;
+
+    % detect wafer hit (bottom)
+    hit = y <= 0;
+    hit_x_side = [hit_x_side; x(hit)];
+
+    % remove landed particles
+    x(hit) = [];
+    y(hit) = [];
+    vx(hit) = [];
+    vy(hit) = [];
+
+    if isempty(x), break; end
+end
+
+%% Case2: Showerhead
+x = rand(N,1);
+y = ones(N,1);
+
+vx = 0.1*randn(N,1);
+vy = -abs(randn(N,1));   % downward
+
+hit_x_shower = [];
+
+for step = 1:200
+    x = x + 0.01*vx;
+    y = y + 0.01*vy;
+
+    hit = y <= 0;
+    hit_x_shower = [hit_x_shower; x(hit)];
+
+    x(hit) = [];
+    y(hit) = [];
+    vx(hit) = [];
+    vy(hit) = [];
+
+    if isempty(x), break; end
+end
+
+%% Distribution
+edges = linspace(0,L,bins+1);
+
+side_hist = histcounts(hit_x_side,edges);
+shower_hist = histcounts(hit_x_shower,edges);
+
+%% Uniformity
+% use coefficient of variation (std/mean)
+side_uniformity = std(side_hist)/mean(side_hist);
+shower_uniformity = std(shower_hist)/mean(shower_hist);
+
+improvement = (side_uniformity - shower_uniformity)/side_uniformity * 100;
+
+fprintf('Uniformity improvement (showerhead): %.2f%%\n', improvement);
+
+%% Distribution Plot
+figure;
+subplot(2,1,1);
+bar(side_hist);
+title('Side Flow Deposition');
+
+subplot(2,1,2);
+bar(shower_hist);
+title('Showerhead Deposition');
+
+%% Purge Model
+Seff = 4e-3;
+V_simple = 0.8e-3;
+V_shower = 1.2e-3;
+
+t = linspace(0,5,200);
+P0 = 100;
+
+P_simple = P0 * exp(-t*Seff/V_simple);
+P_shower = P0 * exp(-t*Seff/V_shower);
+
+target = 0.01*P0;
+
+t_simple = t(find(P_simple<=target,1));
+t_shower = t(find(P_shower<=target,1));
+
+purge_penalty = (t_shower - t_simple)/t_simple * 100;
+
+fprintf('Purge time increase (showerhead): %.2f%%\n', purge_penalty);
+
+figure;
+plot(t,P_simple,'LineWidth',2); hold on;
+plot(t,P_shower,'LineWidth',2);
+legend('Simple','Showerhead');
+title('Purge Comparison');
+xlabel('Time'); ylabel('Pressure');
+grid on;
